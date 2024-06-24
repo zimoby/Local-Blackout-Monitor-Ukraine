@@ -11,7 +11,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from colorama import init, Fore, Back, Style
 import logging
 from dotenv import load_dotenv
@@ -61,6 +61,13 @@ class LocalBlackoutMonitor:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         return webdriver.Chrome(options=chrome_options)
+    
+    def restart_driver(self):
+        logger.info("Restarting WebDriver...")
+        if self.driver:
+            self.driver.quit()
+        self.driver = self.setup_driver()
+        logger.info("WebDriver restarted successfully")
 
     def update_schedule(self):
         try:
@@ -99,6 +106,8 @@ class LocalBlackoutMonitor:
                     logger.info(f"Outage from: {self.todays_limits['start']} to: {self.todays_limits['end']}")
                 else:
                     logger.warning("Could not find enough time entries in the text.")
+                    self.todays_limits["start"], self.todays_limits["end"] = "00", "24"
+                    # logger.warning(f"Text: {status_element.text}")
             else:
                 logger.warning("Status element not found or has no text.")
         except Exception as e:
@@ -141,47 +150,56 @@ class LocalBlackoutMonitor:
 
     def get_actual_state_scrape(self):
         logger.info("Getting actual state from scraping...")
-        try:
-            self.driver.get(URL_HOUSE_STATE)
-            
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                down_element = WebDriverWait(self.driver, 2).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-danger"))
-                )
-                if "down" in down_element.text.lower():
-                    return 2  # Світла немає
-            except TimeoutException:
-                pass
+                self.driver.get(URL_HOUSE_STATE)
+                
+                try:
+                    down_element = WebDriverWait(self.driver, 2).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-danger"))
+                    )
+                    if "down" in down_element.text.lower():
+                        return 2  # Світла немає
+                except TimeoutException:
+                    pass
+                
+                try:
+                    operational_element = WebDriverWait(self.driver, 2).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-primary"))
+                    )
+                    if "operational" in operational_element.text.lower():
+                        return 0  # Світло є
+                except TimeoutException:
+                    pass
+                
+                logger.warning("Could not determine clear state from scraping. Defaulting to possible outage.")
+                return -1
             
-            try:
-                operational_element = WebDriverWait(self.driver, 2).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-primary"))
-                )
-                if "operational" in operational_element.text.lower():
-                    return 0  # Світло є
-            except TimeoutException:
-                pass
-            
-            logger.warning("Could not determine clear state from scraping. Defaulting to possible outage.")
-            return -1
-        
-        except Exception as e:
-            logger.error(f"Error while getting actual state from scraping: {str(e)}")
-            return -1
+            except WebDriverException as e:
+                logger.error(f"WebDriver error on attempt {attempt + 1}: {str(e)}")
+                if attempt < max_retries - 1:
+                    self.restart_driver()
+                else:
+                    logger.error("Max retries reached. Unable to scrape.")
+                    return -1
+            except Exception as e:
+                logger.error(f"Unexpected error while getting actual state from scraping: {str(e)}")
+                return -1
 
     @staticmethod
     def compare_states(expected, actual, today_state):
         if today_state == -1 or expected == -1 or actual == -1:
-            return "No data available"
+            return "Немає доступних даних"
         
         if not today_state:
             if actual == 0:
-                return "Match"
+                return "Співпадіння"
             
         if expected == actual:
-            return "Match"
+            return "Співпадіння"
         
-        return "Possible Mismatch" if expected == 1 else "Mismatch"
+        return "Можливе неспівпадіння" if expected == 1 else "Неспівпадіння"
     
     def time_in_range(self, current_time):
         start_hour = int(self.todays_limits["start"].split(":")[0]) if self.todays_limits["start"] != "none" else None
@@ -194,7 +212,7 @@ class LocalBlackoutMonitor:
         today_schedule = self.schedule.get(day, [])
         next_day_schedule = self.schedule.get(next_day, [])
 
-        print("\nToday's Electricity Schedule:")
+        print("\nРозклад електропостачання на сьогодні:")
         for hour, state in enumerate(today_schedule):
             time_style = f"{Back.WHITE}{Fore.BLACK}" if hour == current_time.hour else ""
 
@@ -207,7 +225,7 @@ class LocalBlackoutMonitor:
             current_hour = f"({STATE_COLORS[self.current_actual_state]}{STATE_NAMES[self.current_actual_state]}{Style.RESET_ALL})" if hour == current_time.hour else ""
             print(f"{time_style}{hour:02d}:00 {limit_indicator} {state_color}{STATE_NAMES[state]}{Style.RESET_ALL} {current_hour}")
 
-        print("\nFirst 5 Hours of Next Day:")
+        print("\nПерші 5 годин наступного дня:")
         for hour, state in enumerate(next_day_schedule[:5]):
             print(f"{hour:02d}:00 {STATE_COLORS[state]}{STATE_NAMES[state]}{Style.RESET_ALL}")
 
@@ -217,14 +235,14 @@ class LocalBlackoutMonitor:
         logging.info(f"Checking at {current_time}")
         expected_state = self.get_expected_state(current_time)
         self.current_actual_state = self.get_actual_state()
-        logger.info(f"Expected: {expected_state}, Actual: {self.current_actual_state}")
+        logger.info(f"Очікувано: {expected_state}, Фактично: {self.current_actual_state}")
         today_state = int(self.time_in_range(hours))
         comparison = self.compare_states(expected_state, self.current_actual_state, today_state)
         
-        print(f"\n{Fore.CYAN}Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Expected: {STATE_COLORS[expected_state]}{STATE_NAMES[expected_state]}")
-        print(f"Actual: {STATE_COLORS[self.current_actual_state]}{STATE_NAMES[self.current_actual_state]}")
-        print(f"Result: {Fore.MAGENTA}{comparison}")
+        print(f"\n{Fore.CYAN}Час: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Очікувано: {STATE_COLORS[expected_state]}{STATE_NAMES[expected_state]}")
+        print(f"Фактично: {STATE_COLORS[self.current_actual_state]}{STATE_NAMES[self.current_actual_state]}")
+        print(f"Результат: {Fore.MAGENTA}{comparison}")
 
         self.display_today_schedule(current_time)
 
@@ -252,7 +270,7 @@ class LocalBlackoutMonitor:
                 if f.tell() == 0:
                     writer.writeheader()
                 writer.writerow(result)
-            logger.info(f"Results recorded successfully in {results_file_path}")
+            # logger.info(f"Results recorded successfully in {results_file_path}")
         except IOError as e:
             logger.error(f"Error writing to results file: {e}")
         except Exception as e:
@@ -289,7 +307,7 @@ def main():
         schedule.every().day.at(UPDATE_SCHEDULE_TIME).do(monitor.update_schedule)
         schedule.every().day.at(STABLE_OUTAGE_TIME_CHECK).do(monitor.get_stable_outage_state)
 
-        logger.info("Checks scheduled for XX:30 every hour")
+        # logger.info("Checks scheduled for XX:30 every hour")
         logger.info("Daily schedule update task has been set.")
 
         log_next_run()

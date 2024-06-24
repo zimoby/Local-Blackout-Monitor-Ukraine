@@ -1,4 +1,4 @@
-# Local Blackout Monitor
+# Local Blackout Monitor (Ukraine)
 
 This project monitors the electricity status for a local area, comparing the actual state with an expected schedule. It uses either the UptimeRobot API or web scraping to determine the current electricity status.
 
