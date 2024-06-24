@@ -107,7 +107,6 @@ class LocalBlackoutMonitor:
                 else:
                     logger.warning("Could not find enough time entries in the text.")
                     self.todays_limits["start"], self.todays_limits["end"] = "00", "24"
-                    # logger.warning(f"Text: {status_element.text}")
             else:
                 logger.warning("Status element not found or has no text.")
         except Exception as e:
@@ -270,7 +269,6 @@ class LocalBlackoutMonitor:
                 if f.tell() == 0:
                     writer.writeheader()
                 writer.writerow(result)
-            # logger.info(f"Results recorded successfully in {results_file_path}")
         except IOError as e:
             logger.error(f"Error writing to results file: {e}")
         except Exception as e:
@@ -307,7 +305,6 @@ def main():
         schedule.every().day.at(UPDATE_SCHEDULE_TIME).do(monitor.update_schedule)
         schedule.every().day.at(STABLE_OUTAGE_TIME_CHECK).do(monitor.get_stable_outage_state)
 
-        # logger.info("Checks scheduled for XX:30 every hour")
         logger.info("Daily schedule update task has been set.")
 
         log_next_run()
