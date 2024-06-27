@@ -7,7 +7,7 @@ This project monitors the electricity status for a local area, comparing the act
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/local-blackout-monitor.git
+   git clone https://github.com/zimoby/Local-Blackout-Monitor-Ukraine.git
    cd local-blackout-monitor
    ```
 
