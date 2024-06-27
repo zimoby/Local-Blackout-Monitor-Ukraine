@@ -8,3 +8,4 @@ env/
 venv/
 *.log
 Data/electricity_comparison.csv
+.DS_Store
