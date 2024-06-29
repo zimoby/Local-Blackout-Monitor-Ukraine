@@ -8,7 +8,7 @@ This project monitors the electricity status for a local area, comparing the act
 
    ```bash
    git clone https://github.com/zimoby/Local-Blackout-Monitor-Ukraine.git
-   cd local-blackout-monitor
+   cd Local-Blackout-Monitor-Ukraine
    ```
 
 2. Install dependencies:
