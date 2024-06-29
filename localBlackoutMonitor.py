@@ -16,6 +16,7 @@ from colorama import init, Fore, Back, Style
 import logging
 from dotenv import load_dotenv
 import requests
+import sqlite3
 
 load_dotenv()
 
@@ -56,6 +57,63 @@ class LocalBlackoutMonitor:
         self.driver = self.setup_driver()
         self.current_actual_state = None
         self.check_dtek = CHECK_DTEK
+        self.db_connection = self.setup_database()
+
+    @staticmethod
+    def setup_database():
+        db_path = os.path.join(os.path.dirname(__file__), 'Data', 'electricity_data.db')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS electricity_status (
+                timestamp TEXT PRIMARY KEY,
+                expected_state INTEGER,
+                actual_state INTEGER,
+                today_state INTEGER,
+                comparison TEXT
+            )
+        ''')
+        conn.commit()
+        return conn
+
+
+    def record_results(self, current_time, expected_state, actual_state, today_state, comparison):
+        cursor = self.db_connection.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO electricity_status
+            (timestamp, expected_state, actual_state, today_state, comparison)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (current_time.strftime("%Y-%m-%d %H:%M:%S"), expected_state, actual_state, today_state, comparison))
+        self.db_connection.commit()
+
+    def get_daily_energy_summary(self, date=None):
+        if date is None:
+            date = datetime.now().date()
+        
+        cursor = self.db_connection.cursor()
+        cursor.execute('''
+            SELECT 
+                SUM(CASE WHEN actual_state = 0 THEN 1 ELSE 0 END) as on_hours,
+                SUM(CASE WHEN actual_state = 2 THEN 1 ELSE 0 END) as off_hours,
+                SUM(CASE WHEN actual_state IN (-1, 1) OR actual_state IS NULL THEN 1 ELSE 0 END) as unknown_hours
+            FROM electricity_status
+            WHERE DATE(timestamp) = ?
+        ''', (date.strftime("%Y-%m-%d"),))
+        
+        result = cursor.fetchone()
+        return {
+            "on_hours": result[0] or 0,
+            "off_hours": result[1] or 0,
+            "unknown_hours": result[2] or 0
+        }
+
+    def display_daily_energy_summary(self, date=None):
+        summary = self.get_daily_energy_summary(date)
+        
+        print("\nЩоденний підсумок енергопостачання:")
+        print(f"{Fore.GREEN}Електроенергія увімкнена: {summary['on_hours']} годин")
+        print(f"{Fore.RED}Електроенергія вимкнена: {summary['off_hours']} годин")
+        print(f"{Fore.YELLOW}Невідомий стан: {summary['unknown_hours']} годин")
 
     @staticmethod
     def setup_driver():
@@ -245,35 +303,15 @@ class LocalBlackoutMonitor:
         print(f"Результат: {Fore.MAGENTA}{comparison}")
 
         self.display_today_schedule(current_time)
+        self.display_daily_energy_summary(current_time.date())
 
         if not check_only:
             self.record_results(current_time, expected_state, self.current_actual_state, today_state, comparison)
 
-    @staticmethod
-    def record_results(current_time, expected_state, actual_state, today_state, comparison):
-        result = {
-            "timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "expected_state": expected_state,
-            "actual_state": actual_state,
-            "today_state": today_state,
-            "comparison": comparison
-        }
 
-        data_dir = os.path.join(os.path.dirname(__file__), 'Data')
-        os.makedirs(data_dir, exist_ok=True)
-
-        results_file_path = os.path.join(data_dir, RESULTS_FILE)
-
-        try:
-            with open(results_file_path, 'a', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=result.keys())
-                if f.tell() == 0:
-                    writer.writeheader()
-                writer.writerow(result)
-        except IOError as e:
-            logger.error(f"Error writing to results file: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error while recording results: {e}")
+    def __del__(self):
+        if hasattr(self, 'db_connection'):
+            self.db_connection.close()
 
 def main():
     monitor = LocalBlackoutMonitor()
