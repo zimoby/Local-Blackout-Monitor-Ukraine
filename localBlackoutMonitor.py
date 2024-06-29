@@ -32,7 +32,8 @@ CHECK_DTEK = True
 CHECK_INTERVAL = 60  # minutes
 SCHEDULE_FILE = 'schedule.json'
 RESULTS_FILE = 'electricity_comparison.csv'
-STABLE_OUTAGE_TIME_CHECK = "12:00"
+STABLE_OUTAGE_TIME_CHECK = "00:15"
+STABLE_OUTAGE_TIME_2_CHECK = "12:15"
 UPDATE_SCHEDULE_TIME = "00:20"
 
 STATE_COLORS = {
@@ -304,6 +305,7 @@ def main():
 
         schedule.every().day.at(UPDATE_SCHEDULE_TIME).do(monitor.update_schedule)
         schedule.every().day.at(STABLE_OUTAGE_TIME_CHECK).do(monitor.get_stable_outage_state)
+        schedule.every().day.at(STABLE_OUTAGE_TIME_2_CHECK).do(monitor.get_stable_outage_state)
 
         logger.info("Daily schedule update task has been set.")
 
