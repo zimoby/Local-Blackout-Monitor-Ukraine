@@ -1,5 +1,5 @@
-schedule
-selenium
-colorama
-requests
-python-dotenv
+schedule==1.1.0
+selenium==4.9.1
+colorama==0.4.6
+requests==2.31.0
+python-dotenv==1.0.0
