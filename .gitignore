@@ -7,5 +7,5 @@ __pycache__/
 env/
 venv/
 *.log
-Data/electricity_comparison.csv
+Data/
 .DS_Store
