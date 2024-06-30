@@ -2,14 +2,17 @@ import re
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from config import URL_HOUSE_STATE, UPTIMEROBOT_API_KEY, DTEK_URL, CHECK_DTEK
 from datetime import datetime
-import time
 import logging
+import time
+
 logger = logging.getLogger(__name__)
 
 class Scraper:
@@ -23,8 +26,14 @@ class Scraper:
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument("--remote-debugging-port=9222")
+
             try:
-                self.driver = webdriver.Chrome(options=chrome_options)
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                self.driver.set_page_load_timeout(30)
                 logger.info("WebDriver initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize WebDriver: {e}")
@@ -112,13 +121,13 @@ class Scraper:
             logger.error("WebDriver not available. Cannot scrape for actual state.")
             return -1
 
-        max_retries = 3
+        max_retries = 5
         for attempt in range(max_retries):
             try:
                 self.driver.get(URL_HOUSE_STATE)
                 
                 try:
-                    down_element = WebDriverWait(self.driver, 10).until(
+                    down_element = WebDriverWait(self.driver, 20).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-danger"))
                     )
                     if "down" in down_element.text.lower():
@@ -127,7 +136,7 @@ class Scraper:
                     pass
                 
                 try:
-                    operational_element = WebDriverWait(self.driver, 10).until(
+                    operational_element = WebDriverWait(self.driver, 20).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "span.uk-text-primary"))
                     )
                     if "operational" in operational_element.text.lower():
@@ -141,7 +150,8 @@ class Scraper:
             except WebDriverException as e:
                 logger.error(f"WebDriver error on attempt {attempt + 1}: {str(e)}")
                 if attempt < max_retries - 1:
-                    time.sleep(5)
+                    time.sleep(10) 
+                    self.quit_driver()
                     self.setup_driver()
                 else:
                     logger.error("Max retries reached. Unable to scrape.")
@@ -149,6 +159,15 @@ class Scraper:
             except Exception as e:
                 logger.error(f"Unexpected error while getting actual state from scraping: {str(e)}")
                 return -1
+            
+    def quit_driver(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.error(f"Error while quitting WebDriver: {e}")
+            finally:
+                self.driver = None
 
     def time_in_range(self, current_hour, todays_limits):
         start_hour = int(todays_limits["start"].split(":")[0]) if todays_limits["start"] != "none" else None
@@ -156,6 +175,4 @@ class Scraper:
         return start_hour <= current_hour < end_hour if start_hour is not None and end_hour is not None else False
 
     def __del__(self):
-        if hasattr(self, 'driver') and self.driver:
-            self.driver.quit()
-            logger.info("WebDriver closed")
+        self.quit_driver()
