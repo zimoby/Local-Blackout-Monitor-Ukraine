@@ -58,20 +58,47 @@ class DatabaseManager:
         
         try:
             cursor = self.conn.cursor()
+            
+            # Get the last record for each hour of the day
             cursor.execute('''
-                SELECT 
-                    SUM(CASE WHEN actual_state = 0 THEN 1 ELSE 0 END) as on_hours,
-                    SUM(CASE WHEN actual_state = 2 THEN 1 ELSE 0 END) as off_hours,
-                    SUM(CASE WHEN actual_state IN (-1, 1) OR actual_state IS NULL THEN 1 ELSE 0 END) as unknown_hours
-                FROM electricity_status
-                WHERE DATE(timestamp) = ?
+                WITH hourly_data AS (
+                    SELECT 
+                        strftime('%H', timestamp) as hour,
+                        actual_state,
+                        ROW_NUMBER() OVER (PARTITION BY strftime('%H', timestamp) ORDER BY timestamp DESC) as rn
+                    FROM electricity_status
+                    WHERE DATE(timestamp) = ?
+                )
+                SELECT hour, actual_state
+                FROM hourly_data
+                WHERE rn = 1
+                ORDER BY hour
             ''', (date.strftime("%Y-%m-%d"),))
             
-            result = cursor.fetchone()
+            results = cursor.fetchall()
+            
+            on_hours = 0
+            off_hours = 0
+            unknown_hours = 0
+            
+            hours_set = set(r[0] for r in results)
+            for hour in range(24):
+                hour_str = f"{hour:02d}"
+                if hour_str in hours_set:
+                    state = next(r[1] for r in results if r[0] == hour_str)
+                    if state == 0:
+                        on_hours += 1
+                    elif state == 2:
+                        off_hours += 1
+                    else:
+                        unknown_hours += 1
+                else:
+                    unknown_hours += 1
+            
             return {
-                "on_hours": result[0] or 0,
-                "off_hours": result[1] or 0,
-                "unknown_hours": result[2] or 0
+                "on_hours": on_hours,
+                "off_hours": off_hours,
+                "unknown_hours": unknown_hours
             }
         except Exception as e:
             logger.error(f"Error getting daily energy summary: {e}")
