@@ -3,6 +3,7 @@ import time
 from config import STATE_COLORS, STATE_NAMES, UPDATE_SCHEDULE_TIME, STABLE_OUTAGE_TIME_CHECK, STABLE_OUTAGE_TIME_2_CHECK, GROUP_NUMBER, SCHEDULE_FILE
 from colorama import Fore, Back, Style
 import json
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -46,11 +47,17 @@ def update_schedule(self):
         logger.error(f"Failed to update schedule: {e}")
 
 def setup_schedule(monitor):
-    def scheduled_check():
+    async def scheduled_check():
         try:
-            monitor.check_and_record()
+            await monitor.check_and_record()
         except Exception as e:
             logger.error(f"Error during scheduled check: {str(e)}")
+
+    def run_scheduled_check():
+        try:
+            asyncio.run(scheduled_check())
+        except Exception as e:
+            logger.error(f"Error running scheduled check: {str(e)}")
 
     def log_next_run():
         next_run = schedule.next_run()
@@ -65,10 +72,10 @@ def setup_schedule(monitor):
         monitor.get_stable_outage_state()
 
         logger.info("Creating initial record...")
-        monitor.check_and_record()
+        asyncio.run(monitor.check_and_record())
 
         for hour in range(24):
-            schedule.every().day.at(f"{hour:02d}:30").do(scheduled_check)
+            schedule.every().day.at(f"{hour:02d}:30").do(run_scheduled_check)
 
         schedule.every().day.at(UPDATE_SCHEDULE_TIME).do(monitor.update_schedule)
         schedule.every().day.at(STABLE_OUTAGE_TIME_CHECK).do(monitor.get_stable_outage_state)
@@ -86,3 +93,6 @@ def setup_schedule(monitor):
         logger.warning("Monitoring stopped by user.")
     except Exception as e:
         logger.error(f"Unexpected error in main loop: {str(e)}")
+        # You might want to add a retry mechanism or exit the program here
+        # For now, we'll just continue the loop
+        time.sleep(60)

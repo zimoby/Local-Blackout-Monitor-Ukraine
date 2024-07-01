@@ -2,6 +2,7 @@ from datetime import datetime
 from .database import DatabaseManager
 from .scraper import Scraper
 from .utils import get_expected_state, compare_states, display_today_schedule
+from .tapo_manager import get_tapo_energy_data
 from config import STATE_COLORS, STATE_NAMES, SCHEDULE_FILE, GROUP_NUMBER
 import json
 from colorama import Fore
@@ -30,7 +31,7 @@ class LocalBlackoutMonitor:
         self.todays_limits = self.scraper.get_stable_outage_state()
         logger.info(f"Updated today's limits: {self.todays_limits}")
 
-    def check_and_record(self, check_only=False):
+    async def check_and_record(self, check_only=False):
         current_time = datetime.now()
         hours = current_time.hour
         logging.info(f"Checking at {current_time}")
@@ -45,12 +46,24 @@ class LocalBlackoutMonitor:
         print(f"Фактично: {STATE_COLORS[self.current_actual_state]}{STATE_NAMES[self.current_actual_state]}")
         print(f"Результат: {Fore.MAGENTA}{comparison}")
 
+        hourly_consumption = self.db_manager.get_hourly_energy_consumption(current_time.date())
         display_today_schedule(self.schedule, current_time, self.current_actual_state, 
-                               lambda hour: self.scraper.time_in_range(hour, self.todays_limits))
+                               lambda hour: self.scraper.time_in_range(hour, self.todays_limits),
+                               hourly_consumption)
         self.db_manager.display_daily_energy_summary(current_time.date())
 
         if not check_only:
             self.db_manager.record_results(current_time, expected_state, self.current_actual_state, today_state, comparison)
+
+        # Collect and record energy consumption data
+        try:
+            energy_data = await get_tapo_energy_data()
+            if energy_data:
+                self.db_manager.record_energy_consumption(current_time, energy_data)
+            else:
+                logger.warning("No energy data collected from Tapo devices")
+        except Exception as e:
+            logger.error(f"Error collecting or recording energy data: {str(e)}")
 
     def __del__(self):
         if hasattr(self, 'scraper'):

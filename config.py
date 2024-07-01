@@ -27,3 +27,21 @@ STATE_NAMES = {
     1: "Можливо відключення",
     2: "Світла немає"
 }
+
+TAPO_USERNAME = os.getenv('TAPO_USERNAME')
+TAPO_PASSWORD = os.getenv('TAPO_PASSWORD')
+UPS_INFO = [
+    {
+        "battery_Ah": 200,
+        "smart_plugs": [
+            {
+                "ip": os.getenv('TAPO_IP_1'),
+                "type": "p115"
+            },
+            {
+                "ip": os.getenv('TAPO_IP_2'),
+                "type": "p115"
+            }
+        ]
+    }
+]

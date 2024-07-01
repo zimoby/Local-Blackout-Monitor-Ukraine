@@ -24,7 +24,7 @@ def compare_states(expected, actual, today_state):
     return "Можливе неспівпадіння" if expected == 1 else "Неспівпадіння"
 
 
-def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func):
+def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption):
     day = current_time.weekday()
     next_day = (day + 1) % 7
     today_schedule = schedule.get(day, [])
@@ -41,7 +41,14 @@ def display_today_schedule(schedule, current_time, current_actual_state, time_in
             state_color = STATE_COLORS[state] if time_in_range_func(hour) else STATE_COLORS[-1]
 
         current_hour = f"({STATE_COLORS[current_actual_state]}{STATE_NAMES[current_actual_state]}{Style.RESET_ALL})" if hour == current_time.hour else ""
-        print(f"{time_style}{hour:02d}:00 {limit_indicator} {state_color}{STATE_NAMES[state]}{Style.RESET_ALL} {current_hour}")
+        
+        # Add energy consumption information
+        consumption_info = ""
+        if hour in hourly_consumption:
+            for ups_id, consumption in hourly_consumption[hour].items():
+                consumption_info += f" | UPS_{ups_id}: {consumption/1000:.2f} kWh"
+        
+        print(f"{time_style}{hour:02d}:00 {limit_indicator} {state_color}{STATE_NAMES[state]}{Style.RESET_ALL} {current_hour}{consumption_info}")
 
     print("\nПерші 5 годин наступного дня:")
     for hour, state in enumerate(next_day_schedule[:5]):
