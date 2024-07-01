@@ -183,6 +183,36 @@ class DatabaseManager:
             logger.error(f"Error getting hourly energy consumption: {e}")
             return {}
 
+    def get_actual_states(self, date=None):
+        if not self.conn:
+            logger.error("Database connection not established")
+            return {}
+
+        if date is None:
+            date = datetime.now().date()
+        
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                SELECT strftime('%H', timestamp) as hour, actual_state
+                FROM electricity_status
+                WHERE DATE(timestamp) = ?
+                ORDER BY timestamp DESC
+            ''', (date.strftime("%Y-%m-%d"),))
+            
+            results = cursor.fetchall()
+            actual_states = {}
+            
+            for hour, state in results:
+                hour = int(hour)
+                if hour not in actual_states:
+                    actual_states[hour] = state
+            
+            return actual_states
+        except Exception as e:
+            logger.error(f"Error getting actual states: {e}")
+            return {}
+
 
     def display_daily_energy_summary(self, date=None):
         summary = self.get_daily_energy_summary(date)

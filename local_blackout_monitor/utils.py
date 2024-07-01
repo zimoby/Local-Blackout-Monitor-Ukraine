@@ -24,7 +24,7 @@ def compare_states(expected, actual, today_state):
     return "Можливе неспівпадіння" if expected == 1 else "Неспівпадіння"
 
 
-def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption):
+def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption, actual_states):
     day = current_time.weekday()
     next_day = (day + 1) % 7
     today_schedule = schedule.get(day, [])
@@ -46,7 +46,9 @@ def display_today_schedule(schedule, current_time, current_actual_state, time_in
         consumption_info = ""
         if hour in hourly_consumption:
             for ups_id, consumption in hourly_consumption[hour].items():
-                consumption_info += f" | UPS_{ups_id}: {consumption/1000:.2f} kWh"
+                # Change color to red if electricity was actually off
+                ups_color = Fore.RED if actual_states.get(hour, 0) == 2 else Fore.CYAN
+                consumption_info += f" | {ups_color}{ups_id}: {consumption/1000:.2f} kWh{Style.RESET_ALL}"
         
         print(f"{time_style}{hour:02d}:00 {limit_indicator} {state_color}{STATE_NAMES[state]}{Style.RESET_ALL} {current_hour}{consumption_info}")
 

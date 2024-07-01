@@ -47,9 +47,10 @@ class LocalBlackoutMonitor:
         print(f"Результат: {Fore.MAGENTA}{comparison}")
 
         hourly_consumption = self.db_manager.get_hourly_energy_consumption(current_time.date())
+        actual_states = self.db_manager.get_actual_states(current_time.date())
         display_today_schedule(self.schedule, current_time, self.current_actual_state, 
                                lambda hour: self.scraper.time_in_range(hour, self.todays_limits),
-                               hourly_consumption)
+                               hourly_consumption, actual_states)
         self.db_manager.display_daily_energy_summary(current_time.date())
 
         if not check_only:
