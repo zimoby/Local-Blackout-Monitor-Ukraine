@@ -3,10 +3,11 @@ from .database import DatabaseManager
 from .scraper import Scraper
 from .utils import get_expected_state, compare_states, display_today_schedule
 from .tapo_manager import get_tapo_energy_data
-from config import STATE_COLORS, STATE_NAMES, SCHEDULE_FILE, GROUP_NUMBER
+from config import STATE_COLORS, STATE_NAMES, SCHEDULE_FILE, GROUP_NUMBER, UPS_INFO
 import json
 from colorama import Fore
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,13 @@ class LocalBlackoutMonitor:
 
         hourly_consumption = self.db_manager.get_hourly_energy_consumption(current_time.date())
         actual_states = self.db_manager.get_actual_states(current_time.date())
-        display_today_schedule(self.schedule, current_time, self.current_actual_state, 
+        
+        # Get today's schedule
+        today_schedule = self.schedule.get(current_time.weekday(), [0] * 24)  # Default to all 0's if no schedule found
+        
+        display_today_schedule(today_schedule, current_time, self.current_actual_state, 
                                lambda hour: self.scraper.time_in_range(hour, self.todays_limits),
-                               hourly_consumption, actual_states)
+                               hourly_consumption, actual_states, UPS_INFO)
         self.db_manager.display_daily_energy_summary(current_time.date())
 
         if not check_only:

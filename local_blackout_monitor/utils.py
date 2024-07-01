@@ -24,14 +24,34 @@ def compare_states(expected, actual, today_state):
     return "Можливе неспівпадіння" if expected == 1 else "Неспівпадіння"
 
 
-def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption, actual_states):
-    day = current_time.weekday()
-    next_day = (day + 1) % 7
-    today_schedule = schedule.get(day, [])
-    next_day_schedule = schedule.get(next_day, [])
+def calculate_ups_energy_usage(schedule, actual_states, hourly_consumption, ups_info):
+    outage_consumption = {}
+    for ups in ups_info:
+        ups_id = f"UPS_{ups_info.index(ups)}"
+        outage_consumption[ups_id] = {
+            'total_kwh': 0,
+            'hours': 0,
+            'battery_ah': ups['battery_Ah']
+        }
+    
+    current_outage = False
+    for hour in range(24):
+        if schedule[hour] == 2 and actual_states.get(hour, 0) == 2:
+            current_outage = True
+        elif current_outage:
+            break
+        
+        if current_outage:
+            for ups_id in outage_consumption:
+                if hour in hourly_consumption and ups_id in hourly_consumption[hour]:
+                    outage_consumption[ups_id]['total_kwh'] += hourly_consumption[hour][ups_id] / 1000
+                    outage_consumption[ups_id]['hours'] += 1
+    
+    return outage_consumption
 
+def display_today_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption, actual_states, ups_info):
     print("\nРозклад електропостачання на сьогодні:")
-    for hour, state in enumerate(today_schedule):
+    for hour, state in enumerate(schedule):
         time_style = f"{Back.WHITE}{Fore.BLACK}" if hour == current_time.hour else ""
 
         limit_indicator = "[+]"
@@ -52,6 +72,10 @@ def display_today_schedule(schedule, current_time, current_actual_state, time_in
         
         print(f"{time_style}{hour:02d}:00 {limit_indicator} {state_color}{STATE_NAMES[state]}{Style.RESET_ALL} {current_hour}{consumption_info}")
 
-    print("\nПерші 5 годин наступного дня:")
-    for hour, state in enumerate(next_day_schedule[:5]):
-        print(f"{hour:02d}:00 {STATE_COLORS[state]}{STATE_NAMES[state]}{Style.RESET_ALL}")
+    # Calculate and display UPS energy usage during outages
+    outage_consumption = calculate_ups_energy_usage(schedule, actual_states, hourly_consumption, ups_info)
+    print("\nВикористання енергії ДБЖ під час відключень електроенергії:")
+    for ups_id, data in outage_consumption.items():
+        if data['hours'] > 0:
+            battery_percentage = (data['total_kwh'] * 1000) / (data['battery_ah'] * 12) * 100  # Assuming 12V battery
+            print(f"{ups_id}: {data['total_kwh']:.2f} kWh за {data['hours']} годин (приблизно {battery_percentage:.1f}% ємності акумулятора)")
