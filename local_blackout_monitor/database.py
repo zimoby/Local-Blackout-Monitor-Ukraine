@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from colorama import Fore
 import json
 import logging
@@ -221,6 +221,50 @@ class DatabaseManager:
         print(f"{Fore.GREEN}Електроенергія увімкнена: {summary['on_hours']} годин")
         print(f"{Fore.RED}Електроенергія вимкнена: {summary['off_hours']} годин")
         print(f"{Fore.YELLOW}Невідомий стан: {summary['unknown_hours']} годин")
+
+    def cleanup_duplicates(self, days_to_keep=30):
+        if not self.conn:
+            logger.error("Database connection not established")
+            return
+
+        try:
+            cursor = self.conn.cursor()
+            
+            # Delete old data
+            # cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
+            # cursor.execute('''
+            #     DELETE FROM energy_consumption
+            #     WHERE DATE(timestamp) < ?
+            # ''', (cutoff_date,))
+            
+            # Get the latest entry for each day and smart plug
+            cursor.execute('''
+                CREATE TEMPORARY TABLE latest_entries AS
+                SELECT ups_id, smart_plug_ip, DATE(timestamp) as date_stamp, MAX(timestamp) as max_timestamp
+                FROM energy_consumption
+                GROUP BY ups_id, smart_plug_ip, date_stamp
+            ''')
+            
+            # Delete entries that are not the latest for each day and smart plug
+            cursor.execute('''
+                DELETE FROM energy_consumption
+                WHERE rowid NOT IN (
+                    SELECT energy_consumption.rowid
+                    FROM energy_consumption
+                    JOIN latest_entries ON energy_consumption.ups_id = latest_entries.ups_id
+                        AND energy_consumption.smart_plug_ip = latest_entries.smart_plug_ip
+                        AND energy_consumption.timestamp = latest_entries.max_timestamp
+                )
+            ''')
+            
+            # Drop the temporary table
+            cursor.execute('DROP TABLE latest_entries')
+            
+            self.conn.commit()
+            logger.info(f"Database cleanup completed. Rows affected: {cursor.rowcount}")
+        except Exception as e:
+            logger.error(f"Error during database cleanup: {e}")
+            self.conn.rollback()
 
     def __del__(self):
         if hasattr(self, 'conn') and self.conn:
