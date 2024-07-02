@@ -80,6 +80,11 @@ def display_today_schedule(schedule, current_time, current_actual_state, time_in
         if data['hours'] > 0:
             battery_percentage = (data['total_kwh'] * 1000) / (data['battery_ah'] * 12) * 100  # Assuming 12V battery
             print(f"{ups_id}: {data['total_kwh']:.2f} kWh за {data['hours']} годин (приблизно {battery_percentage:.1f}% ємності акумулятора)")
+            
+            # Add warning message if battery usage exceeds 50%
+            if battery_percentage > 50:
+                print(f"{Fore.RED}УВАГА! {ups_id} використав більше 50% ємності акумулятора.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Рекомендується замінити джерело живлення на портативну станцію.{Style.RESET_ALL}")
 
     # Export the data to a JSON file
     file_path = export_daily_schedule(schedule, current_time, current_actual_state, time_in_range_func, hourly_consumption, actual_states, ups_info)
